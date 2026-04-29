@@ -197,6 +197,12 @@ function makeButton(text, cls, onClick) {
 // Inline add form
 // ---------------------------------------------------------------------------
 
+function parseEntries(raw) {
+  return [...new Set(
+    raw.split(/[\s,;]+/).map(v => v.trim().toLowerCase()).filter(Boolean)
+  )];
+}
+
 function toggleAddForm(groupDiv, groupName) {
   const slot = groupDiv.querySelector('.add-form-slot');
 
@@ -205,12 +211,20 @@ function toggleAddForm(groupDiv, groupName) {
     return;
   }
 
-  const form = document.createElement('div');
-  form.className = 'inline-form';
+  // Expand group if collapsed
+  const body = groupDiv.querySelector('.group-body');
+  const nameSpan = groupDiv.querySelector('.group-name');
+  if (body.classList.contains('collapsed')) {
+    body.classList.remove('collapsed');
+    nameSpan.textContent = '▼ ' + groupName;
+  }
 
-  const input = document.createElement('input');
-  input.type = 'text';
-  input.placeholder = 'domain.com или 1.2.3.0/24';
+  const form = document.createElement('div');
+  form.className = 'inline-form inline-form-multi';
+
+  const textarea = document.createElement('textarea');
+  textarea.placeholder = 'domain.com, 1.2.3.4, 91.108.4.0/22\nМожно вставить сразу несколько';
+  textarea.rows = 3;
 
   const saveBtn = makeButton('Save', 'primary', doSave);
   const cancelBtn = makeButton('Cancel', '', () => { slot.innerHTML = ''; });
@@ -218,31 +232,42 @@ function toggleAddForm(groupDiv, groupName) {
   const hint = document.createElement('div');
   hint.className = 'validation-hint';
 
-  form.append(input, saveBtn, cancelBtn);
+  form.append(textarea, saveBtn, cancelBtn);
   slot.append(form, hint);
-  input.focus();
+  textarea.focus();
 
   async function doSave() {
-    const value = input.value.trim().toLowerCase();
-    const err = validateEntry(value);
-    if (err) {
-      hint.textContent = err;
+    const values = parseEntries(textarea.value);
+    if (!values.length) return;
+
+    const invalid = values.map(v => validateEntry(v) ? v : null).filter(Boolean);
+    if (invalid.length) {
+      hint.textContent = `Невалидные записи: ${invalid.join(', ')}`;
       return;
     }
     hint.textContent = '';
     saveBtn.disabled = true;
+
     try {
-      await apiFetch('POST', `/api/groups/${encodeURIComponent(groupName)}/entries`, { value });
+      if (values.length === 1) {
+        await apiFetch('POST', `/api/groups/${encodeURIComponent(groupName)}/entries`, { value: values[0] });
+      } else {
+        const res = await apiFetch('POST', `/api/groups/${encodeURIComponent(groupName)}/entries/batch`, { values });
+        if (res.skipped_duplicates > 0) {
+          showToast(`Добавлено: ${res.added}, дубликатов пропущено: ${res.skipped_duplicates}`, res.added > 0);
+        }
+      }
       await loadState();
+      slot.innerHTML = '';
     } catch (e) {
       showToast(e.message);
       saveBtn.disabled = false;
     }
   }
 
-  input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') doSave();
+  textarea.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') slot.innerHTML = '';
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) doSave();
   });
 }
 

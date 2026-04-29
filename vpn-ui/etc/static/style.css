@@ -203,7 +203,8 @@ h1 {
   border-top: 1px solid #3c3c3c;
 }
 
-.inline-form input {
+.inline-form input,
+.inline-form textarea {
   flex: 1;
   background: #252526;
   border: 1px solid #555;
@@ -213,10 +214,16 @@ h1 {
   font-size: 13px;
   border-radius: 3px;
   outline: none;
+  resize: vertical;
 }
 
-.inline-form input:focus {
+.inline-form input:focus,
+.inline-form textarea:focus {
   border-color: #9cdcfe;
+}
+
+.inline-form-multi {
+  align-items: flex-start;
 }
 
 .validation-hint {

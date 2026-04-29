@@ -701,6 +701,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
             and parts[3] == "entries"
         ):
             self._api_add_entry(urllib.parse.unquote(parts[2]))
+        elif (
+            len(parts) == 5
+            and parts[0] == "api"
+            and parts[1] == "groups"
+            and parts[3] == "entries"
+            and parts[4] == "batch"
+        ):
+            self._api_add_entries_batch(urllib.parse.unquote(parts[2]))
         else:
             self.send_error_json("not found", 404)
 
@@ -811,6 +819,31 @@ class Handler(http.server.BaseHTTPRequestHandler):
             group["entries"].append({"value": value, "type": typ})
             write_draft(draft)
         self.send_json({"success": True, "type": typ})
+
+    def _api_add_entries_batch(self, group_name: str):
+        body = self.read_body()
+        values = [v.strip().lower() for v in body.get("values", []) if v.strip()]
+        if not values:
+            self.send_error_json("values required", 400)
+            return
+        added, skipped_dup, invalid = [], [], []
+        with _lock:
+            draft = read_draft() or {"groups": []}
+            group = next((g for g in draft["groups"] if g["name"] == group_name), None)
+            if group is None:
+                self.send_error_json("group not found", 404)
+                return
+            existing = {e["value"] for e in group["entries"]}
+            for value in values:
+                if value in existing:
+                    skipped_dup.append(value)
+                    continue
+                typ = infer_type(value)
+                group["entries"].append({"value": value, "type": typ})
+                existing.add(value)
+                added.append(value)
+            write_draft(draft)
+        self.send_json({"added": len(added), "skipped_duplicates": len(skipped_dup), "invalid": invalid})
 
     def _api_delete_entry(self, group_name: str, value: str):
         with _lock:
