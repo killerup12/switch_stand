@@ -2,6 +2,79 @@
 
 Selective VPN на MikroTik hAP ax3: контейнер mihomo гонит выбранный трафик через Hysteria2 на VPS, а Switch Stand — веб-морда для управления правилами маршрутизации и прокси-серверами.
 
+## Быстрый старт
+
+**Требования:** MikroTik роутер с RouterOS 7.x, поддержка контейнеров включена, USB-накопитель примонтирован как `usb1`, mihomo-контейнер запущен на `192.168.254.4`.
+
+### 1. Клонировать репозиторий
+
+```bash
+git clone git@github.com:killerup12/switch_stand.git
+cd switch_stand
+```
+
+### 2. Скопировать файлы на роутер
+
+Примонтируй SMB-шару роутера и скопируй папку `vpn-ui/etc/` в `usb1/docker/vpn-ui/etc/`:
+
+```bash
+open smb://192.168.88.1/usb1
+# Скопировать vpn-ui/etc/ → usb1/docker/vpn-ui/etc/
+```
+
+### 3. SSH-ключ для контейнера
+
+```bash
+ssh-keygen -t ed25519 -N "" -C "vpn-ui" -f /tmp/vpn-ui-key
+# Скопировать /tmp/vpn-ui-key (приватный) → usb1/docker/vpn-ui/etc/id_ed25519 через SMB
+PUBKEY=$(cat /tmp/vpn-ui-key.pub)
+ssh admin@192.168.88.1 "/file/add name=\"usb1/docker/vpn-ui/etc/vpn-ui-key.pub\" contents=\"${PUBKEY}\""
+ssh admin@192.168.88.1 '/user/ssh-keys/import public-key-file=usb1/docker/vpn-ui/etc/vpn-ui-key.pub user=admin'
+rm /tmp/vpn-ui-key /tmp/vpn-ui-key.pub
+```
+
+### 4. Создать контейнер на роутере
+
+```routeros
+/interface/veth/add name=VPNUI address=192.168.254.5/24 gateway=192.168.254.1 comment="mihomo-vpn-ui"
+/interface/bridge/port/add interface=VPNUI bridge=Docker comment="mihomo-vpn-ui"
+/container/mounts/add list=vpnui_mounts src=/usb1/docker/vpn-ui/etc dst=/app mode=rw
+/container/mounts/add list=vpnui_mounts src=/usb1/docker/mihomo/etc dst=/mihomo-cfg mode=rw
+/container/add remote-image=python:3-alpine interface=VPNUI root-dir=/usb1/vpn-ui-root \
+    mountlists=vpnui_mounts entrypoint=/bin/sh cmd=/app/start.sh \
+    dns=192.168.254.1 start-on-boot=yes logging=yes comment="mihomo-vpn-ui"
+/ip/firewall/filter/add chain=input action=accept protocol=tcp \
+    in-interface=Docker dst-port=22 comment="mihomo-vpn-ui-ssh-from-docker"
+/container/start [find comment="mihomo-vpn-ui"]
+```
+
+Дождаться ~60 секунд (установка зависимостей при первом старте).
+
+### 5. Добавить DNS
+
+В PiHole (`/usb1/docker/pihole/etc/pihole.toml`), в массив `hosts`:
+```
+"192.168.254.5 switch_stand.lan"
+```
+Перезапустить PiHole.
+
+### 6. Открыть интерфейс
+
+```
+http://switch_stand.lan:8080
+```
+
+### Обновление кода
+
+```bash
+cd switch_stand/vpn-ui
+bash deploy.sh
+```
+
+> Подробная инструкция с объяснением каждого шага — в [`vpn-ui/DEPLOY.md`](vpn-ui/DEPLOY.md).
+
+---
+
 ## Топология
 
 ```
