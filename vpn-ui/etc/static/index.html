@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>vpn-ui</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<header>
+  <h1>vpn-ui</h1>
+  <span id="status-bar">загрузка...</span>
+  <div class="header-actions">
+    <button id="btn-test-vpn">▶ Test VPN</button>
+    <span id="vpn-test-result"></span>
+  </div>
+</header>
+
+<div id="dirty-banner" class="hidden">
+  <span>⚠ У тебя несохранённые изменения</span>
+  <div class="banner-actions">
+    <button id="btn-apply" class="primary">Apply</button>
+    <button id="btn-discard" class="danger" title="Discard changes">×</button>
+  </div>
+</div>
+
+<main>
+  <section id="proxies-section">
+    <div class="proxies-header">
+      <span class="proxies-title">Прокси</span>
+      <button id="btn-add-proxy">+ Добавить</button>
+    </div>
+    <div id="proxies-list"></div>
+    <div id="proxy-form-slot"></div>
+  </section>
+
+  <div id="groups-list"></div>
+  <button id="btn-new-group">+ New Group</button>
+</main>
+
+<div id="toast" class="hidden"></div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
