@@ -2,6 +2,8 @@
 
 Selective VPN на MikroTik hAP ax3: контейнер mihomo гонит выбранный трафик через Hysteria2 на VPS, а Switch Stand — веб-морда для управления правилами маршрутизации и прокси-серверами.
 
+![Switch Stand UI](docs/assets/preview.png)
+
 ## Быстрый старт
 
 **Требования:** MikroTik роутер с RouterOS 7.x, поддержка контейнеров включена, USB-накопитель примонтирован как `usb1`, mihomo-контейнер запущен на `192.168.254.4`.
