@@ -358,6 +358,7 @@ async function testVpn() {
     result.style.color = '#f44747';
   } finally {
     btn.disabled = false;
+    refreshStatus();
   }
 }
 
