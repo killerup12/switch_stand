@@ -666,6 +666,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._api_state()
         elif path == "/api/proxies":
             self._api_proxies_get()
+        elif path == "/api/proxy/active":
+            self._api_proxy_active_get()
         elif path == "/api/settings":
             self._api_settings_get()
         elif path == "/api/test/vpn":
@@ -686,6 +688,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._api_discard()
         elif path == "/api/proxies":
             self._api_proxy_add()
+        elif path == "/api/proxy/active":
+            self._api_proxy_active_set()
         elif path == "/api/settings":
             self._api_settings_save()
         elif parts == ["api", "groups"]:
@@ -847,6 +851,31 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 s["mihomo_dns"] = new_dns
             write_settings(s)
             self.send_json({"success": True})
+
+    def _api_proxy_active_get(self):
+        try:
+            resp = requests.get(f"{MIHOMO_API}/proxies/VPN", timeout=5)
+            resp.raise_for_status()
+            self.send_json({"active": resp.json().get("now", "")})
+        except Exception as e:
+            self.send_error_json(str(e))
+
+    def _api_proxy_active_set(self):
+        body = self.read_body()
+        name = body.get("name", "").strip()
+        if not name:
+            self.send_error_json("name required", 400)
+            return
+        try:
+            resp = requests.put(
+                f"{MIHOMO_API}/proxies/VPN",
+                json={"name": name},
+                timeout=5,
+            )
+            resp.raise_for_status()
+            self.send_json({"success": True})
+        except Exception as e:
+            self.send_error_json(str(e))
 
     def _api_proxies_get(self):
         try:

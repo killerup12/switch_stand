@@ -365,24 +365,42 @@ async function saveSettings() {
 
 async function loadProxies() {
   try {
-    const data = await apiFetch('GET', '/api/proxies');
-    renderProxies(data.proxies || []);
+    const [proxyData, activeData] = await Promise.all([
+      apiFetch('GET', '/api/proxies'),
+      apiFetch('GET', '/api/proxy/active').catch(() => ({ active: '' })),
+    ]);
+    renderProxies(proxyData.proxies || [], activeData.active || '');
   } catch (e) {
     showToast('Не удалось загрузить прокси: ' + e.message);
   }
 }
 
-function renderProxies(proxies) {
+function renderProxies(proxies, active) {
   const list = document.getElementById('proxies-list');
   list.innerHTML = '';
   for (const p of proxies) {
-    list.appendChild(buildProxyCard(p));
+    list.appendChild(buildProxyCard(p, active));
   }
 }
 
-function buildProxyCard(proxy) {
+function buildProxyCard(proxy, active) {
   const card = document.createElement('div');
-  card.className = 'proxy-card';
+  card.className = 'proxy-card' + (proxy.name === active ? ' proxy-active' : '');
+
+  const radio = document.createElement('input');
+  radio.type = 'radio';
+  radio.name = 'active-proxy';
+  radio.checked = proxy.name === active;
+  radio.title = 'Выбрать как активный';
+  radio.addEventListener('change', async () => {
+    try {
+      await apiFetch('POST', '/api/proxy/active', { name: proxy.name });
+      showToast(`Активный прокси: ${proxy.name}`, true);
+      loadProxies();
+    } catch (e) {
+      showToast('Ошибка: ' + e.message);
+    }
+  });
 
   const name = document.createElement('span');
   name.className = 'proxy-name';
@@ -399,7 +417,7 @@ function buildProxyCard(proxy) {
   const del = makeButton('×', 'danger', () => deleteProxy(proxy.name));
   del.title = 'Удалить прокси';
 
-  card.append(name, type, addr, del);
+  card.append(radio, name, type, addr, del);
   return card;
 }
 
