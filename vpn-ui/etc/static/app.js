@@ -111,15 +111,26 @@ function renderDirtyBanner() {
   document.getElementById('dirty-banner').classList.toggle('hidden', !state.dirty);
 }
 
+function getExpandedGroups() {
+  const expanded = new Set();
+  document.querySelectorAll('#groups-list .group').forEach(el => {
+    if (!el.querySelector('.group-body').classList.contains('collapsed')) {
+      expanded.add(el.dataset.groupName);
+    }
+  });
+  return expanded;
+}
+
 function renderGroups() {
+  const expanded = getExpandedGroups();
   const container = document.getElementById('groups-list');
   container.innerHTML = '';
   for (const group of [...state.draft.groups].sort((a, b) => a.name.localeCompare(b.name))) {
-    container.appendChild(buildGroupEl(group));
+    container.appendChild(buildGroupEl(group, expanded.has(group.name)));
   }
 }
 
-function buildGroupEl(group) {
+function buildGroupEl(group, expanded = false) {
   const div = document.createElement('div');
   div.className = 'group';
   div.dataset.groupName = group.name;
@@ -130,7 +141,7 @@ function buildGroupEl(group) {
 
   const nameSpan = document.createElement('span');
   nameSpan.className = 'group-name';
-  nameSpan.textContent = '▶ ' + group.name;
+  nameSpan.textContent = (expanded ? '▼ ' : '▶ ') + group.name;
   header.appendChild(nameSpan);
 
   const actions = document.createElement('div');
@@ -151,9 +162,9 @@ function buildGroupEl(group) {
     nameSpan.textContent = (collapsed ? '▶ ' : '▼ ') + group.name;
   });
 
-  // Body (collapsed by default)
+  // Body
   const body = document.createElement('div');
-  body.className = 'group-body collapsed';
+  body.className = 'group-body' + (expanded ? '' : ' collapsed');
   for (const entry of group.entries) {
     body.appendChild(buildEntryEl(entry, group.name));
   }
