@@ -9,7 +9,7 @@
 ## Обновление кода (контейнер уже запущен)
 
 ```bash
-cd ~/Developer/mikrotik-vpn/vpn-ui
+cd ~/Developer/switch_stand/vpn-ui
 bash deploy.sh   # SFTP-загрузка + перезапуск контейнера
 ```
 
@@ -176,7 +176,7 @@ rm /tmp/vpn-ui-key-recover /tmp/vpn-ui-key-recover.pub
 Записи уже есть в `/usb1/docker/pihole/etc/pihole.toml`:
 ```
 "192.168.254.4 clash.lan"
-"192.168.254.5 vpn.lan"
+"192.168.254.5 switch_stand.lan"
 ```
 Если нет — добавить вручную в массив `hosts` и перезапустить PiHole.
 
@@ -190,7 +190,7 @@ rm /tmp/vpn-ui-key-recover /tmp/vpn-ui-key-recover.pub
 
 ```bash
 # Проверить API
-curl http://vpn.lan:8080/api/state
+curl http://switch_stand.lan:8080/api/state
 # или
 curl http://192.168.254.5:8080/api/state
 ```

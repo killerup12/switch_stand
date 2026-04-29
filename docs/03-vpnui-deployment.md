@@ -7,9 +7,9 @@ originSessionId: a52eb128-5954-4e71-ad7d-de076d2abb9e
 ## vpn-ui контейнер
 
 - IP: 192.168.254.5, порт 8080
-- Доступен как http://vpn.lan:8080 (PiHole DNS)
+- Доступен как http://switch_stand.lan:8080 (PiHole DNS)
 - Файлы: /usb1/docker/vpn-ui/etc/ (app.py, start.sh, static/, draft.json, id_ed25519)
-- Конфиг: ~/Documents/vpn-ui/ на Mac
+- Исходники на Mac: ~/Developer/switch_stand/vpn-ui/
 
 ## RouterOS quirks (найдены при деплое 2026-04-26, дополнено 2026-04-27)
 

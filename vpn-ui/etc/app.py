@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""vpn-ui backend — MikroTik address-list + mihomo config manager."""
+"""Switch Stand backend — MikroTik address-list + mihomo config manager."""
 
 import http.server
 import json
@@ -932,7 +932,7 @@ def main():
         migrate_draft()
 
     server = http.server.ThreadingHTTPServer(("", LISTEN_PORT), Handler)
-    print(f"[vpn-ui] listening on :{LISTEN_PORT}")
+    print(f"[switch_stand] listening on :{LISTEN_PORT}")
     server.serve_forever()
 
 
