@@ -47,6 +47,57 @@ h1 {
   color: #4ec9b0;
 }
 
+/* Settings panel */
+#settings-panel {
+  background: #252526;
+  border: 1px solid #3c3c3c;
+  border-radius: 5px;
+  padding: 12px 16px;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+#settings-panel.hidden {
+  display: none;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.settings-row label {
+  font-size: 12px;
+  color: #888;
+  width: 190px;
+  flex-shrink: 0;
+}
+
+.settings-row input {
+  flex: 1;
+  background: #1e1e1e;
+  border: 1px solid #555;
+  color: #d4d4d4;
+  padding: 4px 8px;
+  font-family: inherit;
+  font-size: 13px;
+  border-radius: 3px;
+  outline: none;
+}
+
+.settings-row input:focus {
+  border-color: #9cdcfe;
+}
+
+.settings-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
 /* Dirty banner */
 #dirty-banner {
   display: flex;
@@ -229,6 +280,11 @@ button.danger:hover:not(:disabled) {
   justify-content: space-between;
   padding: 8px 12px;
   background: #2d2d30;
+}
+
+.proxies-header-actions {
+  display: flex;
+  gap: 6px;
 }
 
 .proxies-title {

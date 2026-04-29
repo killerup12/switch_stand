@@ -5,7 +5,7 @@ ROUTER="admin@192.168.88.1"
 REMOTE_ETC="usb1/docker/vpn-ui/etc"
 LOCAL_ETC="$(cd "$(dirname "$0")/etc" && pwd)"
 CONTAINER_COMMENT="mihomo-vpn-ui"
-API_URL="http://vpn.lan:8080/api/state"
+API_URL="http://192.168.254.5:8080/api/state"
 
 echo "==> Загружаем файлы на роутер..."
 sftp "$ROUTER" <<EOF

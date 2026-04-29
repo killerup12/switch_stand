@@ -13,16 +13,42 @@ import urllib.parse
 import requests
 import yaml
 
-ROUTER_HOST = "192.168.254.1"
-ROUTER_USER = "admin"
+DEFAULT_ROUTER_HOST = "192.168.254.1"
+DEFAULT_ROUTER_USER = "admin"
+DEFAULT_MIHOMO_DNS  = "192.168.254.3"
 SSH_KEY = "/tmp/id_ed25519"  # copied from /app at startup with chmod 600
 MIHOMO_API = "http://192.168.254.4:9090"
 MIHOMO_CFG = "/mihomo-cfg/config.yaml"
 DRAFT_FILE = "/app/draft.json"
+SETTINGS_FILE = "/app/settings.json"
 LISTEN_PORT = 8080
 COMMENT_PREFIX = "mihomo-vpn"
 
 _lock = threading.Lock()
+
+
+# ---------------------------------------------------------------------------
+# Settings
+# ---------------------------------------------------------------------------
+
+def read_settings() -> dict:
+    if os.path.exists(SETTINGS_FILE):
+        with open(SETTINGS_FILE) as f:
+            return json.load(f)
+    return {}
+
+def write_settings(data: dict):
+    with open(SETTINGS_FILE, "w") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+def get_router_host() -> str:
+    return read_settings().get("router_host") or DEFAULT_ROUTER_HOST
+
+def get_router_user() -> str:
+    return read_settings().get("router_user") or DEFAULT_ROUTER_USER
+
+def get_mihomo_dns() -> str:
+    return read_settings().get("mihomo_dns") or DEFAULT_MIHOMO_DNS
 
 
 # ---------------------------------------------------------------------------
@@ -48,7 +74,7 @@ def ssh_run(cmd: str, check: bool = True) -> str:
             "-o", "ConnectTimeout=10",
             "-o", "BatchMode=yes",
             "-o", "LogLevel=ERROR",
-            f"{ROUTER_USER}@{ROUTER_HOST}",
+            f"{get_router_user()}@{get_router_host()}",
             cmd,
         ],
         capture_output=True,
@@ -211,6 +237,17 @@ def replace_yaml_rules(text: str, new_rules: list) -> str:
     if n == 0:
         new_text = text + f"\nrules:\n{rule_lines}\n"
     return new_text
+
+
+def update_yaml_dns_servers(text: str, dns: str) -> str:
+    """Replace nameserver values under default-nameserver and nameserver keys."""
+    for key in ("default-nameserver", "nameserver"):
+        text = re.sub(
+            rf'({re.escape(key)}:\s*\n\s+-\s+)\S+',
+            rf'\g<1>{dns}',
+            text,
+        )
+    return text
 
 
 # ---------------------------------------------------------------------------
@@ -629,6 +666,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._api_state()
         elif path == "/api/proxies":
             self._api_proxies_get()
+        elif path == "/api/settings":
+            self._api_settings_get()
         elif path == "/api/test/vpn":
             self._api_test_vpn()
         elif path == "/api/status":
@@ -647,6 +686,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._api_discard()
         elif path == "/api/proxies":
             self._api_proxy_add()
+        elif path == "/api/settings":
+            self._api_settings_save()
         elif parts == ["api", "groups"]:
             self._api_create_group()
         elif (
@@ -777,6 +818,35 @@ class Handler(http.server.BaseHTTPRequestHandler):
             group["entries"] = [e for e in group["entries"] if e["value"] != value]
             write_draft(draft)
         self.send_json({"success": True})
+
+    def _api_settings_get(self):
+        s = read_settings()
+        self.send_json({
+            "router_host": s.get("router_host") or DEFAULT_ROUTER_HOST,
+            "router_user": s.get("router_user") or DEFAULT_ROUTER_USER,
+            "mihomo_dns":  s.get("mihomo_dns")  or DEFAULT_MIHOMO_DNS,
+        })
+
+    def _api_settings_save(self):
+        with _lock:
+            body = self.read_body()
+            s = read_settings()
+            if "router_host" in body:
+                s["router_host"] = body["router_host"].strip() or DEFAULT_ROUTER_HOST
+            if "router_user" in body:
+                s["router_user"] = body["router_user"].strip() or DEFAULT_ROUTER_USER
+            if "mihomo_dns" in body:
+                new_dns = body["mihomo_dns"].strip() or DEFAULT_MIHOMO_DNS
+                if new_dns != (s.get("mihomo_dns") or DEFAULT_MIHOMO_DNS):
+                    if os.path.exists(MIHOMO_CFG):
+                        with open(MIHOMO_CFG) as f:
+                            cfg_text = f.read()
+                        with open(MIHOMO_CFG, "w") as f:
+                            f.write(update_yaml_dns_servers(cfg_text, new_dns))
+                        _reload_mihomo()
+                s["mihomo_dns"] = new_dns
+            write_settings(s)
+            self.send_json({"success": True})
 
     def _api_proxies_get(self):
         try:

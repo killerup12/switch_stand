@@ -326,6 +326,40 @@ async function testVpn() {
 }
 
 // ---------------------------------------------------------------------------
+// Settings
+// ---------------------------------------------------------------------------
+
+async function loadSettings() {
+  try {
+    const s = await apiFetch('GET', '/api/settings');
+    document.getElementById('setting-router-host').value = s.router_host;
+    document.getElementById('setting-router-user').value = s.router_user;
+    document.getElementById('setting-mihomo-dns').value  = s.mihomo_dns;
+  } catch (e) {
+    showToast('Не удалось загрузить настройки: ' + e.message);
+  }
+}
+
+function toggleSettings() {
+  const panel = document.getElementById('settings-panel');
+  const hidden = panel.classList.toggle('hidden');
+  if (!hidden) loadSettings();
+}
+
+async function saveSettings() {
+  const host = document.getElementById('setting-router-host').value.trim();
+  const user = document.getElementById('setting-router-user').value.trim();
+  const dns  = document.getElementById('setting-mihomo-dns').value.trim();
+  try {
+    await apiFetch('POST', '/api/settings', { router_host: host, router_user: user, mihomo_dns: dns });
+    document.getElementById('settings-panel').classList.add('hidden');
+    showToast('Настройки сохранены', true);
+  } catch (e) {
+    showToast('Ошибка: ' + e.message);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Proxy management
 // ---------------------------------------------------------------------------
 
@@ -378,6 +412,109 @@ async function deleteProxy(name) {
   } catch (e) {
     showToast('Ошибка: ' + e.message);
   }
+}
+
+function parseProxyLink(link) {
+  let url;
+  try {
+    url = new URL(link.trim());
+  } catch {
+    throw new Error('Невалидная ссылка');
+  }
+  const scheme = url.protocol.replace(':', '');
+  const name = url.hash ? decodeURIComponent(url.hash.slice(1)) : url.hostname;
+  const params = Object.fromEntries(url.searchParams);
+
+  if (scheme === 'hy2' || scheme === 'hysteria2') {
+    const data = {
+      type: 'hysteria2',
+      name,
+      server: url.hostname,
+      port: url.port || '443',
+      password: decodeURIComponent(url.username),
+      skip_cert_verify: params.insecure === '1' || params['skip-cert-verify'] === '1',
+    };
+    if (params['obfs-password']) data.obfs_password = params['obfs-password'];
+    return data;
+  }
+
+  if (scheme === 'vless') {
+    const security = params.security || '';
+    if (security !== 'reality') throw new Error('Поддерживается только VLESS+Reality (security=reality)');
+    return {
+      type: 'vless',
+      name,
+      server: url.hostname,
+      port: url.port || '443',
+      uuid: url.username,
+      public_key: params.pbk || '',
+      short_id: params.sid || '',
+      servername: params.sni || '',
+      fingerprint: params.fp || 'chrome',
+    };
+  }
+
+  throw new Error(`Неизвестный формат: ${scheme}://`);
+}
+
+function showLinkImportForm() {
+  const slot = document.getElementById('proxy-form-slot');
+  if (slot.querySelector('.link-import-form')) {
+    slot.innerHTML = '';
+    return;
+  }
+  slot.innerHTML = '';
+
+  const form = document.createElement('div');
+  form.className = 'proxy-form link-import-form';
+
+  const row = document.createElement('div');
+  row.className = 'proxy-form-row';
+  const label = document.createElement('label');
+  label.textContent = 'Ссылка';
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.placeholder = 'hy2://... или vless://...';
+  input.style.fontFamily = 'monospace';
+  row.append(label, input);
+  form.appendChild(row);
+
+  const hint = document.createElement('div');
+  hint.style.fontSize = '11px';
+  hint.style.color = '#666';
+  hint.style.paddingLeft = '98px';
+  hint.textContent = 'Поддерживается: hy2://, hysteria2://, vless:// (Reality)';
+  form.appendChild(hint);
+
+  const actions = document.createElement('div');
+  actions.className = 'proxy-form-actions';
+
+  const addBtn = makeButton('Добавить', 'primary', async () => {
+    let data;
+    try {
+      data = parseProxyLink(input.value);
+    } catch (e) {
+      showToast('Ошибка парсинга: ' + e.message);
+      return;
+    }
+    try {
+      await apiFetch('POST', '/api/proxies', data);
+      slot.innerHTML = '';
+      showToast(`Прокси «${data.name}» добавлен`, true);
+      loadProxies();
+    } catch (e) {
+      showToast('Ошибка: ' + e.message);
+    }
+  });
+
+  const cancelBtn = makeButton('Отмена', '', () => { slot.innerHTML = ''; });
+  actions.append(addBtn, cancelBtn);
+  form.appendChild(actions);
+
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') addBtn.click(); });
+
+  slot.appendChild(form);
+  input.focus();
 }
 
 function toggleProxyForm() {
@@ -523,6 +660,12 @@ document.getElementById('btn-discard').addEventListener('click', discardChanges)
 document.getElementById('btn-new-group').addEventListener('click', createGroup);
 document.getElementById('btn-test-vpn').addEventListener('click', testVpn);
 document.getElementById('btn-add-proxy').addEventListener('click', toggleProxyForm);
+document.getElementById('btn-import-link').addEventListener('click', showLinkImportForm);
+document.getElementById('btn-settings').addEventListener('click', toggleSettings);
+document.getElementById('btn-settings-save').addEventListener('click', saveSettings);
+document.getElementById('btn-settings-close').addEventListener('click', () => {
+  document.getElementById('settings-panel').classList.add('hidden');
+});
 
 loadState();
 loadProxies();

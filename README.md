@@ -1,6 +1,6 @@
 # mikrotik-vpn
 
-Selective VPN на MikroTik hAP ax3: контейнер mihomo гонит выбранный трафик через Hysteria2 на VPS, а vpn-ui — веб-морда для управления списком доменов/IP, идущих через VPN.
+Selective VPN на MikroTik hAP ax3: контейнер mihomo гонит выбранный трафик через Hysteria2 на VPS, а vpn-ui — веб-морда для управления правилами маршрутизации и прокси-серверами.
 
 ## Топология
 
@@ -16,7 +16,7 @@ MikroTik (192.168.88.1)
         ├─ b4:latest      192.168.254.2   DPI-обход (НЕ ТРОГАТЬ)
         ├─ PiHole         192.168.254.3   DNS / блокировка
         ├─ mihomo         192.168.254.4   VPN-клиент Hysteria2 + web UI :9090
-        └─ vpn-ui         192.168.254.5   Flask UI :8080
+        └─ vpn-ui         192.168.254.5   Web UI :8080
                                             └── ssh→ роутер для правки
                                                 /ip firewall address-list vpn-route
 ```
@@ -39,9 +39,11 @@ mikrotik-vpn/
 │   ├── init.sh                            entrypoint-обёртка вокруг /mihomo
 │   └── dnsmasq-mihomo.conf                запись для PiHole: mihomo.lan → 192.168.254.4
 ├── vpn-ui/
-│   ├── DEPLOY.md                          инструкция по деплою контейнера
+│   ├── DEPLOY.md                          инструкция по первичному деплою контейнера
+│   ├── deploy.sh                          обновление файлов на роутере (SFTP + перезапуск)
+│   ├── remove.sh                          полный снос vpn-ui с роутера
 │   └── etc/                               код приложения
-│       ├── app.py                         Flask backend
+│       ├── app.py                         Python HTTP backend
 │       ├── start.sh                       entrypoint (apk add, chmod ключа, run)
 │       ├── nettest.py / dnstest.py        диагностика
 │       └── static/                        index.html, app.js, style.css
@@ -50,6 +52,21 @@ mikrotik-vpn/
     ├── backup-20260426-205334.backup      бинарный бэкап RouterOS (с vpn-ui)
     └── config-20260426-205334.rsc         текстовый export того же состояния
 ```
+
+## Возможности vpn-ui
+
+**Правила маршрутизации** — управление RouterOS address-list `vpn-route` и правилами mihomo:
+- Добавление доменов, IP-адресов и CIDR-блоков в именованные группы
+- Apply синхронизирует address-list на роутере и конфиг mihomo, затем перезагружает mihomo
+
+**Прокси-серверы** — управление секцией `proxies` в `config.yaml` mihomo:
+- Поддерживаемые типы: Hysteria2, VLESS+Reality
+- Добавление вручную через форму или по URI-ссылке (`hy2://`, `hysteria2://`, `vless://`)
+- При изменениях mihomo перезагружается автоматически
+
+**Настройки** (кнопка ⚙):
+- IP/hostname роутера и имя пользователя SSH (сохраняются в `settings.json`)
+- DNS-сервер для mihomo — при изменении обновляет `config.yaml` и перезагружает mihomo
 
 ## Где это всё живёт на роутере
 
@@ -73,7 +90,7 @@ mikrotik-vpn/
 1. **TUN auto-route в RouterOS-контейнере не настраивает catch-all маршруты** — нужен `init.sh`, который вручную добавляет `0.0.0.0/1` и `128.0.0.0/1` через `utun0`, ставит `ip_forward=1`, `rp_filter=0` и исключает приватные подсети. Без этого петля.
 2. **mihomo без `-d /etc/mihomo`** стартует с пустым конфигом (default-entrypoint в образе `metacubex/mihomo:latest` не подхватывает `/etc/mihomo`).
 3. **`sniffer.enable: true` обязателен** — без него `DOMAIN-SUFFIX` правила не матчатся.
-4. **SCP upload в этой версии RouterOS не работает** — заливать файлы через `/file/set ... contents=` или `/file/add`.
+4. **SCP upload в этой версии RouterOS не работает, но SFTP — работает** — `deploy.sh` использует SFTP. При первичном деплое (когда нет контейнера) файлы можно залить через SMB или `/file/set ... contents=`.
 5. **`/container/add` использует `mountlists=`**, а `/container/mounts/add` — `list=`. Никаких `comment=` для маунтов, никаких `workdir=` для FAT-USB.
 
 ## Rollback

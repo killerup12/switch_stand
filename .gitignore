@@ -2,3 +2,4 @@ backups/
 mihomo/config-current.yaml
 mihomo/config-initial.yaml
 vpn-ui/etc/draft.json
+vpn-ui/etc/settings.json
