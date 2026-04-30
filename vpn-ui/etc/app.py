@@ -354,16 +354,32 @@ def _reload_mihomo():
 # Draft persistence
 # ---------------------------------------------------------------------------
 
+_HOST32_RE = re.compile(r'^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/32$')
+
 def _normalize_draft(data: dict) -> dict:
     for g in data.get("groups", []):
+        normalized = []
+        seen = set()
         for e in g.get("entries", []):
+            # Normalize x.x.x.x/32 → x.x.x.x
+            m = _HOST32_RE.match(e["value"])
+            if m:
+                e["value"] = m.group(1)
             e["type"] = infer_type(e["value"])
+            if e["value"] not in seen:
+                seen.add(e["value"])
+                normalized.append(e)
+        g["entries"] = normalized
     return data
 
 def read_draft():
     if os.path.exists(DRAFT_FILE):
         with open(DRAFT_FILE) as f:
-            return _normalize_draft(json.load(f))
+            raw = json.load(f)
+        normalized = _normalize_draft(raw)
+        if normalized != raw:
+            write_draft(normalized)
+        return normalized
     return None
 
 
