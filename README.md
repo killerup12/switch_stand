@@ -90,10 +90,11 @@ MikroTik (192.168.88.1)
    └─ Docker bridge (192.168.254.0/24)
         ├─ b4:latest      192.168.254.2   DPI-обход (НЕ ТРОГАТЬ)
         ├─ PiHole         192.168.254.3   DNS / блокировка
-        ├─ mihomo         192.168.254.4   VPN-клиент Hysteria2 + web UI :9090
-        └─ switch_stand   192.168.254.5   Web UI :8080
-                                            └── ssh→ роутер для правки
-                                                /ip firewall address-list vpn-route
+        ├─ mihomo         192.168.254.4   VPN-клиент Hysteria2/VLESS + web UI :9090
+        ├─ switch_stand   192.168.254.5   Web UI :8080
+        │                                   └── ssh→ роутер для правки
+        │                                       /ip firewall address-list vpn-route
+        └─ xray-bth       192.168.254.7   Back-To-Home VLESS+Reality сервер :2053
 ```
 
 Внутри mihomo: `sniffer.enable: true` определяет домен из SNI/Host, дальше правила `DOMAIN-SUFFIX,...,VPN` или `MATCH,DIRECT`. VPN-исходящий — Hysteria2 на VPS; DIRECT — назад в общий канал (фактически через b4).
@@ -107,7 +108,7 @@ switch_stand/
 │   ├── 01-router-mihomo-overview.md       контейнеры, IP, web UI, бэкапы
 │   ├── 02-mihomo-tun-fix.md               почему нужен init.sh (TUN auto-route не работает)
 │   ├── 03-vpnui-deployment.md             RouterOS quirks, найденные при деплое
-│   └── 04-RECOVERY.md                     4 сценария rollback mihomo
+│   └── 04-RECOVERY.md                     сценарии rollback
 ├── mihomo/
 │   ├── config-initial.yaml                первый рабочий конфиг (2026-04-26)
 │   ├── config-current.yaml                актуальный конфиг (2026-04-27)
@@ -122,8 +123,13 @@ switch_stand/
 │       ├── start.sh                       entrypoint (apk add, chmod ключа, run)
 │       ├── nettest.py / dnstest.py        диагностика
 │       └── static/                        index.html, app.js, style.css
+├── xray-bth/
+│   └── mikrotik/
+│       ├── config.json                    конфиг xray-core (VLESS+Reality inbound)
+│       └── deploy.rsc                     RouterOS-скрипт деплоя контейнера
 └── backups/
     ├── before-mihomo-20260425-212909.rsc  конфиг роутера до внедрения mihomo
+    ├── before-vless-bth-20260501-140145   бэкап до добавления xray-bth
     ├── backup-20260426-205334.backup      бинарный бэкап RouterOS
     └── config-20260426-205334.rsc         текстовый export того же состояния
 ```
@@ -132,7 +138,8 @@ switch_stand/
 
 **Правила маршрутизации** — управление RouterOS address-list `vpn-route` и правилами mihomo:
 - Добавление доменов, IP-адресов и CIDR-блоков в именованные группы
-- Поддержка вставки сразу нескольких записей через textarea — любые разделители (пробел, запятая, перенос строки и др.)
+- Поддержка вставки сразу нескольких записей через tag-input — любые разделители (пробел, запятая, перенос строки и др.)
+- **Тумблер группы** — включить/выключить группу целиком: выключенные группы не попадают в address-list и правила mihomo, но сохраняются в draft
 - Группы сворачиваются; при нажатии «+ Add» разворачиваются автоматически; состояние сохраняется при обновлении данных
 - Apply синхронизирует address-list на роутере и конфиг mihomo, затем перезагружает mihomo
 - Удаление группы удаляет все её записи из draft; фактическое удаление с роутера — после Apply
@@ -155,6 +162,7 @@ switch_stand/
 | mihomo init wrapper         | `/usb1/docker/mihomo/etc/init.sh`             |
 | vpn-ui код                  | `/usb1/docker/vpn-ui/etc/`                    |
 | SSH-ключ vpn-ui→router      | `/usb1/docker/vpn-ui/etc/id_ed25519` (FAT, копируется в /tmp+chmod 600 при старте) |
+| xray-bth конфиг             | `/usb1/docker/xray-bth/etc/config.json`       |
 | Бэкап до mihomo             | `/file before-mihomo-20260425.backup`         |
 
 ## Точки доступа
@@ -162,6 +170,7 @@ switch_stand/
 - mihomo web UI (MetaCubeXD): `http://clash.lan:9090/ui`
 - mihomo mixed proxy (HTTP+SOCKS): `clash.lan:7890`
 - Switch Stand: `http://switch_stand.lan:8080`
+- xray-bth (Back-To-Home): `<WAN-IP>:2053` (VLESS+Reality, снаружи сети)
 - SSH на роутер: `ssh admin@192.168.88.1` (по ключу, без пароля)
 
 ## Главные грабли (см. docs/)
