@@ -1,0 +1,56 @@
+{
+  "log": {
+    "loglevel": "warning"
+  },
+  "dns": {
+    "servers": [
+      {
+        "address": "192.168.254.3",
+        "domains": ["geosite:private", "domain:lan"]
+      },
+      "192.168.254.3"
+    ]
+  },
+  "inbounds": [
+    {
+      "tag": "vless-reality-in",
+      "protocol": "vless",
+      "listen": "0.0.0.0",
+      "port": 2053,
+      "settings": {
+        "clients": [
+          {
+            "id": "10b4ac6f-4e73-686f-857b-dd6505da939f",
+            "flow": "xtls-rprx-vision"
+          }
+        ],
+        "decryption": "none"
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "reality",
+        "realitySettings": {
+          "show": false,
+          "dest": "dl.google.com:443",
+          "serverNames": ["dl.google.com"],
+          "privateKey": "EBeIGmaQkDb-ah5Yf9pmoqvfptXwTGH3H8GwSl4Od34",
+          "shortIds": ["5f0a84ea015eb4e4"]
+        }
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "tag": "mihomo",
+      "protocol": "socks",
+      "settings": {
+        "servers": [
+          {
+            "address": "192.168.254.4",
+            "port": 7890
+          }
+        ]
+      }
+    }
+  ]
+}

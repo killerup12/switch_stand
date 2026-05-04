@@ -16,6 +16,7 @@ let state = {
 // ---------------------------------------------------------------------------
 
 function inferType(value) {
+  if (value.startsWith('*.')) return 'wildcard';
   if (value.includes('/')) return 'cidr';
   if (/^[0-9]{1,3}(\.[0-9]{1,3}){3}$/.test(value)) return 'ip';
   return 'domain';
@@ -23,6 +24,11 @@ function inferType(value) {
 
 function validateEntry(value) {
   const type = inferType(value);
+  if (type === 'wildcard') {
+    return /^\*\.[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?\.[a-zA-Z]{2,}$/.test(value)
+      ? null
+      : 'Неверный wildcard (пример: *.discord.com)';
+  }
   if (type === 'cidr') {
     return /^[0-9]{1,3}(\.[0-9]{1,3}){3}\/[0-9]{1,2}$/.test(value)
       ? null
@@ -131,13 +137,35 @@ function renderGroups() {
 }
 
 function buildGroupEl(group, expanded = false) {
+  const isEnabled = group.enabled !== false;
   const div = document.createElement('div');
-  div.className = 'group';
+  div.className = 'group' + (isEnabled ? '' : ' group-disabled');
   div.dataset.groupName = group.name;
 
   // Header
   const header = document.createElement('div');
   header.className = 'group-header';
+
+  // Toggle switch
+  const toggleLabel = document.createElement('label');
+  toggleLabel.className = 'group-toggle';
+  toggleLabel.title = isEnabled ? 'Отключить группу' : 'Включить группу';
+  const toggleInput = document.createElement('input');
+  toggleInput.type = 'checkbox';
+  toggleInput.checked = isEnabled;
+  const toggleSlider = document.createElement('span');
+  toggleSlider.className = 'slider';
+  toggleLabel.append(toggleInput, toggleSlider);
+  toggleInput.addEventListener('change', async () => {
+    try {
+      await apiFetch('PATCH', `/api/groups/${encodeURIComponent(group.name)}`, { enabled: toggleInput.checked });
+      await loadState();
+    } catch (e) {
+      showToast('Ошибка: ' + e.message);
+      toggleInput.checked = !toggleInput.checked;
+    }
+  });
+  header.appendChild(toggleLabel);
 
   const nameSpan = document.createElement('span');
   nameSpan.className = 'group-name';
@@ -158,6 +186,7 @@ function buildGroupEl(group, expanded = false) {
   // Collapse toggle
   header.addEventListener('click', (e) => {
     if (e.target.tagName === 'BUTTON') return;
+    if (e.target.closest('.group-toggle')) return;
     const collapsed = body.classList.toggle('collapsed');
     nameSpan.textContent = (collapsed ? '▶ ' : '▼ ') + group.name;
   });
@@ -233,9 +262,13 @@ function toggleAddForm(groupDiv, groupName) {
   const form = document.createElement('div');
   form.className = 'inline-form inline-form-multi';
 
-  const textarea = document.createElement('textarea');
-  textarea.placeholder = 'domain.com, 1.2.3.4, 91.108.4.0/22\nМожно вставить сразу несколько';
-  textarea.rows = 3;
+  const wrapper = document.createElement('div');
+  wrapper.className = 'tag-input-wrapper';
+
+  const tagInput = document.createElement('input');
+  tagInput.placeholder = 'domain.com  *.discord.com  1.2.3.4  …  Enter или запятая';
+
+  wrapper.appendChild(tagInput);
 
   const saveBtn = makeButton('Save', 'primary', doSave);
   const cancelBtn = makeButton('Cancel', '', () => { slot.innerHTML = ''; });
@@ -243,30 +276,96 @@ function toggleAddForm(groupDiv, groupName) {
   const hint = document.createElement('div');
   hint.className = 'validation-hint';
 
-  form.append(textarea, saveBtn, cancelBtn);
+  form.append(wrapper, saveBtn, cancelBtn);
   slot.append(form, hint);
-  textarea.focus();
+  tagInput.focus();
 
-  async function doSave() {
-    const values = parseEntries(textarea.value);
-    if (!values.length) return;
+  wrapper.addEventListener('click', () => tagInput.focus());
 
-    const invalid = values.map(v => validateEntry(v) ? v : null).filter(Boolean);
-    if (invalid.length) {
-      hint.textContent = `Невалидные записи: ${invalid.join(', ')}`;
+  const tags = [];
+
+  function existingValues() {
+    const group = state.draft.groups.find(g => g.name === groupName);
+    return new Set(group ? group.entries.map(e => e.value.toLowerCase()) : []);
+  }
+
+  function refreshHint() {
+    const dupes = tags.filter(t => t.isDuplicate).map(t => t.value);
+    const invalids = tags.filter(t => t.isInvalid && !t.isDuplicate).map(t => t.value);
+    const parts = [];
+    if (dupes.length) parts.push(`уже есть: ${dupes.join(', ')}`);
+    if (invalids.length) parts.push(`невалидные: ${invalids.join(', ')}`);
+    hint.textContent = parts.join(' · ');
+  }
+
+  function addTag(value) {
+    if (!value) return;
+    const existing = existingValues();
+    const alreadyTagged = tags.some(t => t.value === value);
+    const isDuplicate = existing.has(value) || alreadyTagged;
+    const isInvalid = !!validateEntry(value);
+
+    const el = document.createElement('span');
+    el.className = 'tag' + (isDuplicate ? ' duplicate' : isInvalid ? ' invalid' : '');
+
+    const text = document.createElement('span');
+    text.textContent = value;
+
+    const rm = document.createElement('span');
+    rm.className = 'tag-remove';
+    rm.textContent = '×';
+    rm.addEventListener('click', () => {
+      const idx = tags.findIndex(t => t.el === el);
+      if (idx !== -1) tags.splice(idx, 1);
+      el.remove();
+      refreshHint();
+    });
+
+    el.append(text, rm);
+    wrapper.insertBefore(el, tagInput);
+
+    tags.push({ value, el, isDuplicate, isInvalid });
+    refreshHint();
+  }
+
+  tagInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { slot.innerHTML = ''; return; }
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { doSave(); return; }
+    if (['Enter', ',', ';'].includes(e.key)) {
+      e.preventDefault();
+      const v = tagInput.value.trim().toLowerCase();
+      if (v) { addTag(v); tagInput.value = ''; }
       return;
     }
-    hint.textContent = '';
-    saveBtn.disabled = true;
+    if (e.key === 'Backspace' && !tagInput.value && tags.length) {
+      const last = tags.pop();
+      last.el.remove();
+      refreshHint();
+    }
+  });
 
+  tagInput.addEventListener('paste', (e) => {
+    e.preventDefault();
+    parseEntries(e.clipboardData.getData('text')).forEach(v => addTag(v));
+    tagInput.value = '';
+  });
+
+  async function doSave() {
+    const remaining = tagInput.value.trim().toLowerCase();
+    if (remaining) { addTag(remaining); tagInput.value = ''; }
+
+    const valid = tags.filter(t => !t.isDuplicate && !t.isInvalid).map(t => t.value);
+    if (!valid.length) {
+      if (!hint.textContent) hint.textContent = 'Нет валидных записей для добавления';
+      return;
+    }
+
+    saveBtn.disabled = true;
     try {
-      if (values.length === 1) {
-        await apiFetch('POST', `/api/groups/${encodeURIComponent(groupName)}/entries`, { value: values[0] });
+      if (valid.length === 1) {
+        await apiFetch('POST', `/api/groups/${encodeURIComponent(groupName)}/entries`, { value: valid[0] });
       } else {
-        const res = await apiFetch('POST', `/api/groups/${encodeURIComponent(groupName)}/entries/batch`, { values });
-        if (res.skipped_duplicates > 0) {
-          showToast(`Добавлено: ${res.added}, дубликатов пропущено: ${res.skipped_duplicates}`, res.added > 0);
-        }
+        await apiFetch('POST', `/api/groups/${encodeURIComponent(groupName)}/entries/batch`, { values: valid });
       }
       await loadState();
       slot.innerHTML = '';
@@ -275,11 +374,6 @@ function toggleAddForm(groupDiv, groupName) {
       saveBtn.disabled = false;
     }
   }
-
-  textarea.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') slot.innerHTML = '';
-    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) doSave();
-  });
 }
 
 // ---------------------------------------------------------------------------

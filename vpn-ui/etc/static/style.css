@@ -121,6 +121,61 @@ h1 {
   gap: 8px;
 }
 
+/* Group toggle switch */
+.group-toggle {
+  position: relative;
+  display: inline-block;
+  width: 30px;
+  height: 17px;
+  flex-shrink: 0;
+}
+
+.group-toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+
+.group-toggle .slider {
+  position: absolute;
+  cursor: pointer;
+  inset: 0;
+  background: #444;
+  border-radius: 17px;
+  transition: background 0.2s;
+}
+
+.group-toggle .slider::before {
+  position: absolute;
+  content: "";
+  height: 11px;
+  width: 11px;
+  left: 3px;
+  top: 3px;
+  background: #aaa;
+  border-radius: 50%;
+  transition: transform 0.2s, background 0.2s;
+}
+
+.group-toggle input:checked + .slider {
+  background: #1a4a3a;
+}
+
+.group-toggle input:checked + .slider::before {
+  transform: translateX(13px);
+  background: #4ec9b0;
+}
+
+/* Disabled group appearance */
+.group-disabled .group-header {
+  opacity: 0.55;
+}
+
+.group-disabled .group-body {
+  opacity: 0.35;
+}
+
 /* Groups */
 .group {
   background: #252526;
@@ -230,6 +285,72 @@ h1 {
   font-size: 11px;
   color: #f44747;
   padding: 2px 16px 4px;
+}
+
+/* Tag input */
+.tag-input-wrapper {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  background: #252526;
+  border: 1px solid #555;
+  border-radius: 3px;
+  padding: 4px 8px;
+  min-height: 34px;
+  cursor: text;
+}
+
+.tag-input-wrapper:focus-within {
+  border-color: #9cdcfe;
+}
+
+.tag-input-wrapper input {
+  border: none !important;
+  background: transparent !important;
+  outline: none;
+  flex: 1;
+  min-width: 140px;
+  color: #d4d4d4;
+  font-size: 13px;
+  font-family: inherit;
+  padding: 2px 0;
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #3a3d41;
+  border: 1px solid #555;
+  border-radius: 3px;
+  padding: 1px 6px;
+  font-size: 12px;
+  color: #d4d4d4;
+  white-space: nowrap;
+}
+
+.tag.duplicate {
+  background: #3d1515;
+  border-color: #f44747;
+  color: #f44747;
+}
+
+.tag.invalid {
+  background: #3d2a00;
+  border-color: #ce9178;
+  color: #ce9178;
+}
+
+.tag-remove {
+  cursor: pointer;
+  opacity: 0.5;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.tag-remove:hover {
+  opacity: 1;
 }
 
 /* Buttons */

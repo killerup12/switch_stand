@@ -58,6 +58,8 @@ def get_mihomo_dns() -> str:
 _IP_RE = re.compile(r"^(\d{1,3}\.){3}\d{1,3}$")
 
 def infer_type(value: str) -> str:
+    if value.startswith("*."):
+        return "wildcard"
     if "/" in value:
         return "cidr"
     if _IP_RE.match(value):
@@ -183,11 +185,14 @@ def address_list_to_groups(entries: list) -> list:
     for e in entries:
         parts = e["comment"].split("|")
         group = parts[1] if len(parts) == 3 else "Misc"
-        typ = infer_type(e["address"])
+        raw_typ = parts[2] if len(parts) == 3 else ""
+        # RouterOS appends ",<domain>" to comments of dynamic resolved entries — strip it
+        typ = raw_typ if raw_typ in ("domain", "ip", "cidr", "wildcard") else infer_type(e["address"])
+        value = f"*.{e['address']}" if typ == "wildcard" else e["address"]
         if group not in groups_dict:
             groups_dict[group] = []
             order.append(group)
-        groups_dict[group].append({"value": e["address"], "type": typ})
+        groups_dict[group].append({"value": value, "type": typ})
     return [{"name": g, "entries": groups_dict[g]} for g in order]
 
 
@@ -218,6 +223,8 @@ def build_rules_for_draft(groups: list) -> list:
                 rules.append(f"IP-CIDR,{v},VPN,no-resolve")
             elif t == "ip":
                 rules.append(f"IP-CIDR,{v}/32,VPN,no-resolve")
+            elif t == "wildcard":
+                rules.append(f"DOMAIN-WILDCARD,{v},VPN")
             else:
                 rules.append(f"DOMAIN-SUFFIX,{v},VPN")
     return rules
@@ -358,6 +365,8 @@ _HOST32_RE = re.compile(r'^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/32$')
 
 def _normalize_draft(data: dict) -> dict:
     for g in data.get("groups", []):
+        if "enabled" not in g:
+            g["enabled"] = True
         normalized = []
         seen = set()
         for e in g.get("entries", []):
@@ -403,25 +412,31 @@ def _read_all_ros_addresses() -> set:
 
 
 def is_dirty(draft: dict, live: dict, all_ros: set = None) -> bool:
-    def norm(data):
+    def norm(groups):
         return sorted(
             [
                 {
                     "name": g["name"],
                     "entries": sorted(g["entries"], key=lambda e: e["value"]),
                 }
-                for g in data.get("groups", [])
+                for g in groups
             ],
             key=lambda g: g["name"],
         )
 
-    if norm(draft) == norm(live):
+    enabled_groups = [g for g in draft.get("groups", []) if g.get("enabled", True)]
+
+    if norm(enabled_groups) == norm(live.get("groups", [])):
         return False
 
     # Static live matches draft — remaining diff is only dynamic entries
     if all_ros is not None:
-        draft_values = {e["value"] for g in draft.get("groups", []) for e in g["entries"]}
-        live_values = {e["value"] for g in live.get("groups", []) for e in g["entries"]}
+        # Wildcards are stored in RouterOS without "*." prefix — normalize for comparison
+        def _ros_val(e):
+            return e["value"][2:] if e.get("type") == "wildcard" else e["value"]
+
+        draft_values = {_ros_val(e) for g in enabled_groups for e in g["entries"]}
+        live_values = {_ros_val(e) for g in live.get("groups", []) for e in g["entries"]}
         if not (draft_values - all_ros) and not (live_values - draft_values):
             return False
 
@@ -441,10 +456,14 @@ def apply_changes(draft: dict) -> dict:
     live_entries = read_address_list()
     live_set = {e["address"]: e for e in live_entries}
 
+    effective_groups = [g for g in draft.get("groups", []) if g.get("enabled", True)]
+
     draft_set: dict = {}
-    for group in draft.get("groups", []):
+    for group in effective_groups:
         for entry in group["entries"]:
-            draft_set[entry["value"]] = (group["name"], entry["type"])
+            # wildcards are stored in RouterOS without the "*." prefix
+            ros_key = entry["value"][2:] if entry["type"] == "wildcard" else entry["value"]
+            draft_set[ros_key] = (group["name"], entry["type"])
 
     to_add = {k: v for k, v in draft_set.items() if k not in live_set}
     to_remove = [k for k in live_set if k not in draft_set]
@@ -503,7 +522,7 @@ def apply_changes(draft: dict) -> dict:
     if os.path.exists(MIHOMO_CFG):
         with open(MIHOMO_CFG) as f:
             cfg_text = f.read()
-        new_rules = build_rules_for_draft(draft.get("groups", []))
+        new_rules = build_rules_for_draft(effective_groups)
         new_text = replace_yaml_rules(cfg_text, new_rules)
         with open(MIHOMO_CFG, "w") as f:
             f.write(new_text)
@@ -728,6 +747,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
         else:
             self.send_error_json("not found", 404)
 
+    # PATCH routing
+    def do_PATCH(self):  # noqa: N802
+        path = urllib.parse.urlparse(self.path).path
+        parts = [p for p in path.split("/") if p]
+        if len(parts) == 3 and parts[:2] == ["api", "groups"]:
+            self._api_patch_group(urllib.parse.unquote(parts[2]))
+        else:
+            self.send_error_json("not found", 404)
+
     # DELETE routing
     def do_DELETE(self):  # noqa: N802
         path = urllib.parse.urlparse(self.path).path
@@ -813,6 +841,19 @@ class Handler(http.server.BaseHTTPRequestHandler):
         with _lock:
             draft = read_draft() or {"groups": []}
             draft["groups"] = [g for g in draft["groups"] if g["name"] != name]
+            write_draft(draft)
+        self.send_json({"success": True})
+
+    def _api_patch_group(self, name: str):
+        body = self.read_body()
+        with _lock:
+            draft = read_draft() or {"groups": []}
+            group = next((g for g in draft["groups"] if g["name"] == name), None)
+            if group is None:
+                self.send_error_json("group not found", 404)
+                return
+            if "enabled" in body:
+                group["enabled"] = bool(body["enabled"])
             write_draft(draft)
         self.send_json({"success": True})
 
@@ -980,7 +1021,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def _api_test_vpn(self):
         proxy = "http://192.168.254.4:7890"
         proxies = {"http": proxy, "https": proxy}
-        for url in ["https://ifconfig.me/ip", "https://api.ipify.org", "http://checkip.amazonaws.com"]:
+        for url in ["https://icanhazip.com", "https://api.ipify.org", "http://checkip.amazonaws.com"]:
             try:
                 r = requests.get(
                     url,
